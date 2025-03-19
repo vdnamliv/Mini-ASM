@@ -39,7 +39,6 @@ install_go_tool() {
 
 install_go_tool "subfinder" "go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@v2.6.6"
 install_go_tool "assetfinder" "go install -v github.com/tomnomnom/assetfinder@latest"
-install_go_tool "naabu" "go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@v2.3.1"
 
 # === Bước 4: Clone Sublist3r và Security-Trails vào thư mục tools/
 echo "[INFO] Cloning Sublist3r and Security-Trails tools..."
@@ -62,6 +61,6 @@ echo ""
 echo "[INFO] Installation completed successfully!"
 echo "[INFO] To start using the tool, run the following commands:"
 echo "    source venv/bin/activate"
-echo "    python3 asm.py -h"
+echo "    python3 asm.py --help"
 echo ""
 echo "[INFO] Remember to update your config.ini as needed."
