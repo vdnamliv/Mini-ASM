@@ -17,9 +17,9 @@ from function.subdomain import (
     run_securitytrails,
     merge_files,
 )
-from function.alert import alert_new_subdomains
-#from function.email_alert import 
-#from function.teams_alert import 
+from function.alert import console_alert
+from function.email_alert import email_alert_subdomain
+from function.teams_alert import teams_alert_subdomain
 
 # Configure logging
 log_file = "asm_tool.log"
@@ -44,6 +44,35 @@ def safe_run(func, *args, **kwargs):
         func(*args, **kwargs)
     except Exception as e:
         click.echo(f"Error running {func.__name__}: {e}")
+
+def load_validated_subdomains(ini_file: str, domain: str) -> set:
+    """
+    Đọc file domain_validated.ini có dạng mỗi domain 1 section.
+    Trả về set subdomain thuộc section [domain].
+    """
+    validated_subs = set()
+    in_target_section = False
+    if not os.path.isfile(ini_file):
+        logging.warning(f"File {ini_file} not found, return empty set")
+        return validated_subs
+
+    with open(ini_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            raw_line = line.strip()
+            if raw_line.startswith("[") and raw_line.endswith("]"):
+                section_name = raw_line[1:-1].strip()
+                if section_name.lower() == domain.lower():
+                    in_target_section = True
+                else:
+                    in_target_section = False
+                continue
+
+            if in_target_section:
+                if not raw_line or raw_line.startswith("#") or raw_line.startswith(";"):
+                    continue
+                validated_subs.add(raw_line)
+
+    return validated_subs
 
 def execute_scan(domain, alert_terminal, output, alert_email, alert_teams):
 
@@ -88,21 +117,25 @@ def execute_scan(domain, alert_terminal, output, alert_email, alert_teams):
                 else:
                     click.echo("No subdomains found.")
 
-    
+    found_subdomains = set()
+    with open(merged_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            sub = line.strip()
+            if sub:
+                found_subdomains.add(sub)
+
     # Only alert if hosts (scan) are in domain_validated.ini file
-    if alert_terminal:
-        found_subdomains = set()
-        with open(merged_file, "r") as f:
-            for line in f:
-                sub = line.strip()
-                if sub:
-                    found_subdomains.add(sub)
-        alert_new_subdomains(domain, found_subdomains, validated_ini)
+    if alert_terminal or alert_email:
+        old_subs = load_validated_subdomains(validated_ini, domain)
+        new_subs = found_subdomains - old_subs
 
+        if alert_terminal:
+            console_alert(domain, new_subs)
+        if alert_email:
+            email_alert_subdomain(domain, new_subs)
+        if alert_teams:
+            teams_alert_subdomain(domain, new_subs)
 
-    #if email:
-
-        #if teams:
     if os.path.exists(tmp_dir):
         try:
             shutil.rmtree(tmp_dir)
