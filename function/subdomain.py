@@ -13,7 +13,6 @@ logging.basicConfig(
     ]
 )
 
-# Đường dẫn thư mục chứa các tool
 TOOL_DIR = "./tools"
 
 def run_command(command, tool_name):
