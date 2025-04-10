@@ -1,3 +1,5 @@
+# file: function/email_alert.py
+
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -8,18 +10,20 @@ import os
 config = configparser.ConfigParser()
 config.read("config.ini")
 
-ALERT_EMAIL = config.get("email", "alert_email")
-SMTP_SERVER = config.get("email", "smtp_server")
-SMTP_PORT = int(config.get("email", "smtp_port"))
-SMTP_USER = config.get("email", "smtp_user")
+ALERT_EMAIL   = config.get("email", "alert_email")
+SMTP_SERVER   = config.get("email", "smtp_server")
+SMTP_PORT     = int(config.get("email", "smtp_port"))
+SMTP_USER     = config.get("email", "smtp_user")
 SMTP_PASSWORD = config.get("email", "smtp_password")
 
 def send_email_alert(subject, message):
-    """Send an alert email using smtplib."""
+    """
+    Gửi email sử dụng SMTP (thông tin lấy từ config.ini).
+    """
     try:
         msg = MIMEMultipart()
         msg["From"] = SMTP_USER
-        msg["To"] = ALERT_EMAIL
+        msg["To"]   = ALERT_EMAIL
         msg["Subject"] = subject
         msg.attach(MIMEText(message, "plain"))
 
@@ -32,12 +36,14 @@ def send_email_alert(subject, message):
     except Exception as e:
         logging.error(f"Failed to send email alert: {e}")
 
-def email_alert_subdomain(domain: str, new_subs: set):
+def email_alert_message(domain: str, message: str):
+    """
+    Gửi email alert với nội dung `message` (có thể gộp cả subdomain mới + expired).
+    Nếu `message` rỗng, không gửi.
+    """
+    if not message.strip():
+        logging.info(f"No message for [{domain}] - skipping email alert")
+        return
 
-    if new_subs:
-        subject = f"[ALERT] Found {len(new_subs)} new subdomain(s) for [{domain}]"
-        message = "New subdomains:\n" + "\n".join(new_subs)
-        send_email_alert(subject, message)
-    else:
-        logging.info(f"No new subdomains for [{domain}] - skipping email alert")
-
+    subject = f"[ALERT] Subdomain Report for [{domain}]"
+    send_email_alert(subject, message)
