@@ -34,19 +34,8 @@ def load_validated_subdomains(ini_file: str, domain: str) -> set:
 
     return validated_subs
 
-
-def alert_new_subdomains(domain: str, discovered_subs: set, ini_file: str):
-    """
-    So sánh subdomain vừa quét (discovered_subs) với tập
-    subdomain đã xác thực trong file ini_file (trong section [domain]).
-    In ra console (dùng click.echo) nếu có subdomain mới.
-    """
-    validated_subs = load_validated_subdomains(ini_file, domain)
-    new_subs = discovered_subs - validated_subs
-
-    if new_subs:
-        logging.info(f"[ALERT] Found {len(new_subs)} new subdomain(s) for [{domain}]")
-        for sub in sorted(new_subs):
-            click.echo(f"  {sub}")
+def console_alert(domain: str, message: str):
+    if message:
+        click.echo(f"[{domain}] {message}")
     else:
-        logging.info(f"No new subdomains for [{domain}]")
+        logging.info(f"No alert for {domain}")
