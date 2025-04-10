@@ -8,7 +8,7 @@ import time
 import re 
 import logging
 import shutil
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from function.subdomain import (
     run_subfinder,
@@ -18,8 +18,8 @@ from function.subdomain import (
     merge_files,
 )
 from function.alert import console_alert
-from function.email_alert import email_alert_subdomain
-from function.teams_alert import teams_alert_subdomain
+from function.email_alert import email_alert_message
+from function.teams_alert import teams_alert_message
 
 # Configure logging
 log_file = "asm_tool.log"
@@ -45,39 +45,49 @@ def safe_run(func, *args, **kwargs):
     except Exception as e:
         click.echo(f"Error running {func.__name__}: {e}")
 
-def load_validated_subdomains(ini_file: str, domain: str) -> set:
+def load_validated_subdomains(validated_ini, domain) -> dict:
+
+    if not os.path.exists(validated_ini):
+        logging.warning(f"{validated_ini} does not exist, returning empty dict")
+        return {}
+
+    parser = configparser.ConfigParser()
+    parser.optionxform = str
+    parser.read(validated_ini, encoding="utf-8")
+
+    # Lưu ý: section name so sánh lowercase?
+    if not parser.has_section(domain):
+        return {}
+
+    result = {}
+    for sub_key in parser[domain]:
+        # sub_key là "subdomain.domain"
+        date_str = parser[domain][sub_key].strip()
+        result[sub_key] = date_str
+    return result
+
+def find_expired_subdomains(old_sub_dict, days_valid=365) -> set:
     """
-    Đọc file domain_validated.ini có dạng mỗi domain 1 section.
-    Trả về set subdomain thuộc section [domain].
+    Từ dict sub -> date_str, trả về set subdomain nào đã quá hạn so với today
     """
-    validated_subs = set()
-    in_target_section = False
-    if not os.path.isfile(ini_file):
-        logging.warning(f"File {ini_file} not found, return empty set")
-        return validated_subs
+    expired = set()
+    today = date.today()
 
-    with open(ini_file, 'r', encoding='utf-8') as f:
-        for line in f:
-            raw_line = line.strip()
-            if raw_line.startswith("[") and raw_line.endswith("]"):
-                section_name = raw_line[1:-1].strip()
-                if section_name.lower() == domain.lower():
-                    in_target_section = True
-                else:
-                    in_target_section = False
-                continue
-
-            if in_target_section:
-                if not raw_line or raw_line.startswith("#") or raw_line.startswith(";"):
-                    continue
-                validated_subs.add(raw_line)
-
-    return validated_subs
+    for sub, date_str in old_sub_dict.items():
+        try:
+            validated_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            delta = (today - validated_date).days
+            if delta >= days_valid:
+                expired.add(sub)
+        except ValueError:
+            # Format ngày sai
+            logging.warning(f"Invalid date format for {sub} = {date_str}")
+    return expired
 
 def execute_scan(domain, alert_terminal, output, alert_email, alert_teams):
 
     # Load configuration
-    config = configparser.ConfigParser()
+    config = configparser.ConfigParser(interpolation=None)
     config.read("config.ini")
     api_key_st = config.get("path", "api_key_st", fallback="none")
     validated_ini = config.get("path", "domain_validated_file", fallback="domain_validated.ini")
@@ -125,16 +135,32 @@ def execute_scan(domain, alert_terminal, output, alert_email, alert_teams):
                 found_subdomains.add(sub)
 
     # Only alert if hosts (scan) are in domain_validated.ini file
-    if alert_terminal or alert_email:
-        old_subs = load_validated_subdomains(validated_ini, domain)
-        new_subs = found_subdomains - old_subs
+    if alert_terminal or alert_email or alert_teams:
+
+        old_subs_dict = load_validated_subdomains(validated_ini, domain)
+        new_subs = found_subdomains - set(old_subs_dict.keys())
+        exprired_subs = find_expired_subdomains(old_subs_dict, days_valid=365)
+
+        full_message = ""
+        
+        if new_subs:
+            full_message += f"[+] Found {len(new_subs)} new subdomain(s) for [{domain}]:\n"
+            full_message += "\n".join(new_subs)
+        else:
+            full_message += f"No new subdomains for [{domain}]"
+        
+        if exprired_subs:
+            full_message += f"\n\n[!] Found {len(exprired_subs)} expired subdomain(s) for [{domain}]:\n"
+            full_message += "\n".join(exprired_subs)
+        else:
+            full_message += f"\nNo expired subdomains for [{domain}]"
 
         if alert_terminal:
-            console_alert(domain, new_subs)
+            console_alert(domain, full_message)
         if alert_email:
-            email_alert_subdomain(domain, new_subs)
+            email_alert_message(domain, full_message)
         if alert_teams:
-            teams_alert_subdomain(domain, new_subs)
+            teams_alert_message(domain, full_message)
 
     if os.path.exists(tmp_dir):
         try:
@@ -206,4 +232,10 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         logging.warning("Scan stopped by user.")
+        if os.path.exists(tmp_dir):
+            try:
+                shutil.rmtree(tmp_dir)
+                logging.info(f"Removed temp directory: {tmp_dir}")
+            except Exception as e:
+                logging.warning(f"Could not remove temp directory: {e}")
         exit(0)
