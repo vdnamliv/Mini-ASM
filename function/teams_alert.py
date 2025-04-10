@@ -3,11 +3,17 @@ import logging
 import configparser
 import click
 
-def teams_alert_subdomain(domain: str, new_subs: set):
-    if not new_subs:
-        logging.info(f"No new subdomains for [{domain}] - skipping Teams alert")
-        return
+def teams_alert_message(domain: str, message: str):
+    """
+    Gửi Teams alert với nội dung `message` (một chuỗi duy nhất).
+    Bạn có thể gộp cả subdomain mới lẫn expired subdomain vào message.
 
+    Args:
+        domain (str): Tên domain đang monitor.
+        message (str): Nội dung cần gửi lên Teams.
+                       Ví dụ: "Found 2 new subdomains:\n 1. abc\n 2. xyz\n\n2 subdomains expired:\n ...
+    """
+    # Đọc config để lấy webhook_url, mention_id, mention_name
     config = configparser.ConfigParser()
     config.read("config.ini")
 
@@ -19,6 +25,12 @@ def teams_alert_subdomain(domain: str, new_subs: set):
         logging.error(f"Cannot read [teams] config: {e}")
         return
 
+    # Nếu message rỗng, ta có thể bỏ qua hoặc gửi tin "No updates"
+    if not message.strip():
+        logging.info(f"No message to send for domain [{domain}] - skipping Teams alert.")
+        return
+
+    # Xây dựng phần mention
     mentions = [
         {
             "type": "mention",
@@ -29,9 +41,6 @@ def teams_alert_subdomain(domain: str, new_subs: set):
             }
         }
     ]
-
-    # Nội dung subdomain mới
-    subs_text = "\n".join(sorted(new_subs))
 
     # Build Adaptive Card cho MS Teams
     headers = {"Content-Type": "application/json"}
@@ -47,11 +56,11 @@ def teams_alert_subdomain(domain: str, new_subs: set):
                             "type": "TextBlock",
                             "size": "Medium",
                             "weight": "Bolder",
-                            "text": f"[ALERT] New Subdomains for {domain}"
+                            "text": f"[ALERT] Subdomain Report for {domain}"
                         },
                         {
                             "type": "TextBlock",
-                            "text": f"Found {len(new_subs)} new subdomain(s):\n{subs_text}"
+                            "text": f"{message}"
                         },
                         {
                             "type": "TextBlock",
